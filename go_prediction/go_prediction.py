@@ -15,8 +15,19 @@
 
 import re
 import os
+from dataclasses import dataclass
+from typing import IO
 from collections import defaultdict
 from Ontology.IO import OboIO
+
+
+
+@dataclass
+class Prediction:
+    target: str = None
+    go_term: str = None
+    confidence: float = None
+
 
 pr_field = re.compile("^PR=[0,1]\.[0-9][0-9];$")
 rc_field = re.compile("^RC=[0,1]\.[0-9][0-9]$")
@@ -185,6 +196,44 @@ class GOPrediction:
             print(inrec)
             raise ValueError(errmsg)
 
+    def parse_prediction_file(self, prediction_handle: IO):
+        prediction_handle.seek(0)
+
+        for line in prediction_handle:
+            line_data = self.parse_prediction_line(line)
+            if line_data is not None:
+                self.data[line_data.target].append(line_data)
+
+        return self.data
+
+    def parse_prediction_line(self, line_str: str) -> Prediction:
+        '''
+        Parses a line of CAFA prediction text and returns a named tuple
+        containing target, go term ID and confidence
+        Input expected in this form:
+        T96060004121 GO:0008152 0.01
+
+        If input does not match expectations, this function returns the None value
+        '''
+
+        if type(line_str) is bytes:
+            line_str = line_str.decode()
+
+        try:
+            target_id, go_id, confidence = line_str.strip().split()
+        except ValueError:
+            # Wrong number of things in the split string!
+            return None
+
+        try:
+            confidence = float(confidence)
+        except ValueError:
+            # confidence isn't a number...
+            return None
+
+        return Prediction(target_id, go_id, float(confidence))
+
+
     def read(self, pred_path):
 
         visited_states = []
@@ -196,13 +245,14 @@ class GOPrediction:
         filename = pred_path.name.split('/')[-1]
         filenamefields = filename.split('.')[0].split('_')
         self.taxon = int(filenamefields[2])
-
         #inline = open(pred_path)
         for inline in pred_path:
             # gzipped files are in bytes. Need to convert to utf-8
             if type(inline) is bytes:
                 inline = inline.decode("utf-8")
             inrec = [i.strip() for i in inline.split()]
+
+
             field1 = inrec[0]
             # Check which field type (state) we are in
             if field1 == "AUTHOR":
@@ -276,7 +326,8 @@ class GOPrediction:
 
 
 
-    def split_predictions_by_namespace(self, obo_path, prediction_path):
+    def split_predictions_by_namespace(self, obo_path, prediction_handle):
+
         molecular_function = []
         biological_process = []
         cellular_component = []
@@ -284,8 +335,21 @@ class GOPrediction:
         obo_handle = open(obo_path, "r")
         ontology_reader = OboIO.OboReader(obo_handle).read()
 
-        print(ontology_reader)
+        if self.data is None or len(self.data.keys()) == 0:
+            self.parse_prediction_file(prediction_handle)
 
+        for k, predictions in self.data.items():
+
+            for prediction in predictions:
+
+                namespace = ontology_reader.get_namespace(prediction.go_term)
+
+                if namespace == 'molecular_function':
+                    molecular_function.append(prediction)
+                elif namespace == 'biological_process':
+                    biological_process.append(prediction) #= biological_process + v
+                elif namespace == 'cellular_component':
+                    cellular_component.append(prediction) #= cellular_component + v
 
         return {
             'molecular function': molecular_function,
