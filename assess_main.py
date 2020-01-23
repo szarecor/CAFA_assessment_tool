@@ -78,7 +78,7 @@ def extant_file(x):
     else:
         return open(x, "r")
 
-
+'''
 def mkdir_p(path):
     try:
         os.makedirs(path)
@@ -87,7 +87,7 @@ def mkdir_p(path):
             pass
         else:
             raise
-
+'''
 
 def read_config():
     parser = argparse.ArgumentParser(
@@ -110,87 +110,113 @@ def read_config():
     obo_path = config_dict["obo"]
     benchmark_folder = config_dict["benchmark"]
     results_folder = config_dict["results"]
-    f = config_dict["file"]
-    return (obo_path, benchmark_folder, results_folder, f)
+    prediction_file = config_dict["file"]
+    return obo_path, benchmark_folder, results_folder, prediction_file
 
 
-# Start of Main
-if __name__ == "__main__":
+def main():
+    from pathlib import Path
+    import colorful as cf
+
+    cf.use_style("monokai")
+
     # Read Config
-    obo_path, benchmarkFolder, resultsFolder, f = read_config()
-    # Setup workspace
-    mkdir_p(resultsFolder)
-    mkdir_p(resultsFolder + "/pr_rc/")
-    print("\nEvaluating %s.\n" % f)
+    obo_path, benchmark_folder, results_folder, prediction_file = read_config()
+    team, model, taxonomy = prediction_file.rstrip(".txt").split("_")
+    keywords = ["sequence alignment"]
+    taxonomy_str = taxon_name_converter(taxonomy)
 
-    all_pred = GOPred()
-    pred_path = open(f, "r")
-    all_pred.read_and_split_and_write(obo_path, pred_path)
-    info = [all_pred.author, all_pred.model, all_pred.keywords, all_pred.taxon]
-    # clear memory
-    del all_pred
-    gc.collect()
-    # Store values
-    author = info[0]
-    model = info[1]
-    keywords = info[2][0]
-    taxon = info[3]
-    print("AUTHOR: %s\n" % author)
-    print("MODEL: %s\n" % model)
-    print("KEYWORDS: %s\n" % keywords)
-    print("Species:%s\n" % taxon)
+    Path(f"{results_folder}/precision_recall/").mkdir(parents=True, exist_ok=True)
 
-    resulthandle = open(
-        resultsFolder + "/%s_results.txt" % (os.path.basename(f).split(".")[0]), "w"
-    )
-    prhandle = open(
-        resultsFolder + "/pr_rc/%s_prrc.txt" % (os.path.basename(f).split(".")[0]), "w"
-    )
-    resulthandle.write("AUTHOR:%s\n" % author)
-    resulthandle.write("MODEL: %s\n" % model)
-    resulthandle.write("KEYWORDS: %s\n" % keywords)
-    resulthandle.write("Species:%s\n" % taxon)
-    resulthandle.write(
-        "%s\t%s\t%s\t | %s\t%s\t%s\n"
-        % ("Ontology", "Type", "Mode", "Fmax", "Threshold", "Coverage")
-    )
-    for onto in ["bpo", "cco", "mfo"]:
-        path = os.path.splitext(pred_path.name)[0] + "_" + onto.upper() + ".txt"
-        print("ontology: %s\n" % onto)
-        for Type in ["type1", "type2"]:
-            print("benchmark type:%s\n" % typeConverter(Type))
-            benchmark, obocountDict = read_benchmark(
-                onto, taxon_name_converter(taxon), Type, benchmarkFolder, obo_path
-            )
-            if benchmark == None:
-                sys.stderr.write(
-                    "No benchmark is available for the input species and type"
+    all_predictions = GOPred()
+    predictions_handle = open(prediction_file, "r")
+    split_predictions = all_predictions.split_predictions_by_namespace(obo_path, predictions_handle)
+
+    # TODO: does it make sense to write these separate ontology files to disk?
+
+    with open(f"{results_folder}/{team}_{model}_{taxonomy}_BPO.txt", "w") as bio_process_handle:
+        bpo_predictions = split_predictions.get("biological process")
+        bio_process_handle.write(
+            # TODO: Do we really need to explicitly called __repr__() ?
+            "\n".join([prediction.__repr__() for prediction in bpo_predictions])
+        )
+
+    with open(f"{results_folder}/{team}_{model}_{taxonomy}_CCO.txt", "w") as cellular_component_handle:
+        cco_predictions = split_predictions.get("cellular component")
+        cellular_component_handle.write(
+            # TODO: Do we really need to explicitly called __repr__() ?
+            "\n".join([prediction.__repr__() for prediction in cco_predictions])
+        )
+
+    with open(f"{results_folder}/{team}_{model}_{taxonomy}_MFO.txt", "w") as molecular_function_handle:
+        mfo_predictions = split_predictions.get("molecular function")
+        molecular_function_handle.write(
+            # TODO: Do we really need to explicitly called __repr__() ?
+            "\n".join([prediction.__repr__() for prediction in mfo_predictions])
+        )
+
+    print()
+    print(" EVALUATING:", cf.green(prediction_file))
+    print("AUTHOR/TEAM:", cf.green(team))
+    print("      MODEL:", cf.green(model))
+    print("   KEYWORDS:", cf.green(", ".join(keywords)))
+    print("    SPECIES:", cf.green(f"{taxonomy} ({taxonomy_str})"))
+
+    # Make some new files to hold the evaluation results:
+    base_results_filename = prediction_file.rstrip(".txt")
+    results_path = f"{results_folder}/{base_results_filename}_results.txt"
+    precision_recall_path = f"{results_folder}/precision_recall/{base_results_filename}_precision_recall.txt"
+
+    with open(results_path, "w") as results_handle, open(precision_recall_path, "w") as precision_recall_handle:
+
+        results_handle.write(f"AUTHOR/TEAM: {team}")
+        results_handle.write(f"MODEL: {model}")
+        results_handle.write(f"KEYWORDS: {keywords}")
+        results_handle.write(f"Species: {taxonomy}")
+        results_handle.write("Ontology\tType\tMode\t | Fmax\tThreshold\tCoverage\n")
+
+        indent = " " * 3
+
+        for ontology in ("bpo", "cco", "mfo"):
+            ontology_path = f"{results_folder}/{team}_{model}_{taxonomy}_{ontology.upper()}.txt"
+            print(cf.blue("============================\n"))
+            print("ONTOLOGY:", cf.green(ontology.upper()))
+            for benchmark_type in ("type1", "type2"):
+
+                benchmark_type_str = typeConverter(benchmark_type)
+
+                print(f"{indent}BENCHMARK TYPE:", cf.green(f"{benchmark_type_str} ({benchmark_type})"))
+                benchmark, obo_count_dict = read_benchmark(
+                    ontology,
+                    taxonomy_str,
+                    benchmark_type,
+                    benchmark_folder,
+                    obo_path
                 )
-            c = PrecREC(benchmark, path, obocountDict[onto])
-            if c.exist:
-                for mode in ["partial", "full"]:
-                    print("mode:%s\n" % mode)
-                    fm = c.Fmax_output(mode)
-                    precision = fm[0]
-                    recall = fm[1]
-                    opt = fm[2]
-                    thres = fm[3]
-                    coverage = c.coverage()
-                    # fm.append(os.path.splitext(os.path.basename(pred_path.name))[0])
-                    # print(fm)
-                    print("fmax: %s\n" % opt)
-                    print("threshold giving fmax: %s\n" % thres)
-                    print("coverage: %s\n" % coverage)
-                    resulthandle.write(
-                        "%s\t%s\t%s\t | %s\t%s\t%s\n"
-                        % (onto, typeConverter(Type), mode, opt, thres, coverage)
-                    )
-                    prhandle.write(
-                        ">%s\t%s\t%s\n |" % (onto, typeConverter(Type), mode)
-                    )
-                    prhandle.write(" ".join([str(i) for i in precision]) + "\n")
-                    prhandle.write(" ".join([str(i) for i in recall]) + "\n")
-            del c
-            gc.collect()
-    resulthandle.close()
-    prhandle.close()
+                if benchmark is None:
+                    sys.stderr.write("No benchmark is available for the input species and type")
+
+                c = PrecREC(benchmark, ontology_path, obo_count_dict[ontology])
+
+                if c.exist:
+                    for mode in ("partial", "full"):
+                        print(indent*2, "MODE:", cf.green(mode))
+                        precision, recall, fmax, threshold = c.Fmax_output(mode)
+                        coverage = c.coverage()
+                        print(indent*3, "      FMAX:", cf.green(fmax))
+                        print(indent*3, " THRESHOLD:", cf.green(threshold))
+                        print(indent*3, "  COVERAGE:", cf.green(coverage))
+                        #print('{:>20}'.format(cf.green(threshold)))
+                        print("")
+
+                        results_handle.write(
+                            f"{ontology}\t{benchmark_type_str}\t{mode}\t | {fmax}\t{threshold}\t{coverage}\n"
+                        )
+                        precision_recall_handle.write(
+                            f">{ontology}\t{benchmark_type_str}\t{mode}\n |"
+                        )
+                        precision_recall_handle.write(" ".join([str(i) for i in precision]) + "\n")
+                        precision_recall_handle.write(" ".join([str(i) for i in recall]) + "\n")
+
+if __name__ == "__main__":
+    main()
