@@ -16,6 +16,7 @@
 import re
 import os
 from dataclasses import dataclass
+import json
 from typing import IO
 from collections import defaultdict
 from Ontology.IO import OboIO
@@ -27,6 +28,18 @@ class Prediction:
     target: str = None
     go_term: str = None
     confidence: float = None
+
+    def __repr__(self):
+        return f"{self.target} {self.go_term} {self.confidence}"
+    
+    
+class PredictionEncoder(json.JSONEncoder):
+    ''' Simple class for json encoding of Prediction dataclass instances '''
+    def default(self, obj):
+        if isinstance(obj, Prediction):
+            return obj.__dict__
+        # Base class default() raises TypeError:
+        return json.JSONEncoder.default(self, obj)
 
 
 pr_field = re.compile("^PR=[0,1]\.[0-9][0-9];$")
@@ -59,7 +72,7 @@ legal_keywords = [
 ]
 
 
-class GOPrediction:
+class GeneOntologyPrediction:
     """
     A class for reading and storing CAFA GO predictions
     self.data is a dictionary
@@ -82,7 +95,7 @@ class GOPrediction:
         # get taxon from filename
         self.taxon = None
         self.data = defaultdict(list)
-
+    '''
     def _author_check(self, inrec):
         correct = True
         errmsg = None
@@ -195,10 +208,11 @@ class GOPrediction:
         if not correct:
             print(inrec)
             raise ValueError(errmsg)
-
-    def parse_prediction_file(self, prediction_handle: IO):
+    '''
+    def parse_prediction_file(self, prediction_handle: IO) -> dict:
         prediction_handle.seek(0)
 
+        # TODO: reconsider these nested for loops?
         for line in prediction_handle:
             line_data = self.parse_prediction_line(line)
             if line_data is not None:
@@ -334,6 +348,7 @@ class GOPrediction:
 
         obo_handle = open(obo_path, "r")
         ontology_reader = OboIO.OboReader(obo_handle).read()
+
 
         if self.data is None or len(self.data.keys()) == 0:
             self.parse_prediction_file(prediction_handle)

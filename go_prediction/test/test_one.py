@@ -1,6 +1,6 @@
 import os
 import pytest
-from go_prediction.go_prediction import GOPrediction
+from go_prediction.go_prediction import GOPrediction, Prediction, PredictionEncoder
 
 @pytest.fixture(scope="module")
 def test_data_path():
@@ -12,10 +12,40 @@ def test_split_by_namespace(test_data_path):
     obo_path = "{}go_cafa3.obo".format(test_data_path)
     prediction_path = "{}ZZZ_1_9606.txt".format(test_data_path)
     parser = GOPrediction()
+
+    '''
+    
+    
+    {'molecular function': [
+        Prediction(target='T96060020120', go_term='GO:0008270', confidence=0.8), 
+        Prediction(target='T96060020120', go_term='GO:0003700', confidence=0.8), 
+        Prediction(target='T96060020120', go_term='GO:0003677', confidence=0.7), 
+        Prediction(target='T96060020120', go_term='GO:0003676', confidence=0.29), 
+        Prediction(target='T96060020120', go_term='GO:0046872', confidence=0.29), 
+        Prediction(target='T96060004121', go_term='GO:0016740', confidence=0.01)
+    ], 
+    'biological process': [
+        Prediction(target='T96060020120', go_term='GO:0006351', confidence=0.8), 
+        Prediction(target='T96060020120', go_term='GO:0016032', confidence=0.7), 
+        Prediction(target='T96060020120', go_term='GO:0006355', confidence=0.49), 
+        Prediction(target='T96060004121', go_term='GO:0008152', confidence=0.01)
+    ], 
+    'cellular component': [
+        Prediction(target='T96060020120', go_term='GO:0005634', confidence=0.7), 
+        Prediction(target='T96060020120', go_term='GO:0005730', confidence=0.4), 
+        Prediction(target='T96060020120', go_term='GO:0005622', confidence=0.29)
+    ]
+    }
+    '''
     with open(prediction_path, "r") as read_handle:
         res = parser.split_predictions_by_namespace(obo_path=obo_path, prediction_handle=read_handle)
-        print("")
-        print(res)
+        assert 'molecular function' in res.keys()
+        assert 'biological process' in res.keys()
+        assert 'cellular component' in res.keys()
+
+        assert len(res.get('molecular function')) == 6
+        assert len(res.get('biological process')) == 4
+        assert len(res.get('cellular component')) == 3
 
 
 
