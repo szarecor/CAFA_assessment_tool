@@ -4,7 +4,7 @@ assess:
         #Only One prediction file allowed
         obo: ./precrec/go_cafa3.obo
         benchmark: ./precrec/benchmark/CAFA3_benchmarks/
-        results: ./results/
+        results: ./results2/
 plot:
         results: ./results/
         title: 9606

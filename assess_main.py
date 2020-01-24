@@ -2,7 +2,10 @@
 # -*- coding: utf-8 -*-
 
 import argparse
-from precrec.precRec import PrecREC, read_benchmark
+#from precrec.precRec import PrecREC, read_benchmark
+from precrec.precRec import read_benchmark
+from precrec.precRec import PrecREC
+#from precision_recall_calculator import PrecisionRecallCalculator as PrecREC
 #from precrec.GOPred import GOPred
 from go_prediction.go_prediction import GeneOntologyPrediction as GOPred
 import os
@@ -29,7 +32,7 @@ def get_namespace_index(namespace):
     return num
 
 
-def taxonomy_name_converter(taxonomy_id):
+def convert_taxonomy_name(taxonomy_id: str) -> str:
     # convert from taxonomy ID to name (i.e. from 9606 to HUMAN）
     taxonomy_id = str(taxonomy_id)
 
@@ -64,7 +67,7 @@ def taxonomy_name_converter(taxonomy_id):
     return taxonomy_table.get(taxonomy_id)
 
 
-def benchmark_type_converter(old_type):
+def convert_benchmark_type(old_type: str) -> str:
     types = {
         'type1': 'NK',
         'type2': 'LK',
@@ -103,15 +106,15 @@ def read_config():
     # Load config file to dictionary
     try:
 
-        config_dict = yaml.safe_load(args.config_stream)["assess"]
+        config_dict = yaml.safe_load(args.config_stream).get("assess")
     except yaml.YAMLError as exc:
         print(exc)
         sys.exit()
 
-    obo_path = config_dict["obo"]
-    benchmark_folder = config_dict["benchmark"]
-    results_folder = config_dict["results"]
-    prediction_file = config_dict["file"]
+    obo_path = config_dict.get("obo")
+    benchmark_folder = config_dict.get("benchmark")
+    results_folder = config_dict.get("results")
+    prediction_file = config_dict.get("file")
     return obo_path, benchmark_folder, results_folder, prediction_file
 
 
@@ -124,61 +127,63 @@ def main():
     color2 = cf.green
 
     # Read Config
-    obo_path, benchmark_folder, results_folder, prediction_file = read_config()
-    team, model, taxonomy = prediction_file.rstrip(".txt").split("_")
+    # TODO: Get the metadata in a less dorky way! Use the code from the cafa-format-check repo
+    obo_filepath_str, benchmark_folder_str, results_folder_str, prediction_filepath_str = read_config()
+    team, model, taxonomy = prediction_filepath_str.rstrip(".txt").split("_")
     keywords = ["sequence alignment"]
-    taxonomy_str = taxonomy_name_converter(taxonomy)
+    taxonomy_str = convert_taxonomy_name(taxonomy)
 
-    Path(f"{results_folder}/precision_recall/").mkdir(parents=True, exist_ok=True)
+    Path(f"{results_folder_str}/precision_recall/").mkdir(parents=True, exist_ok=True)
 
-    all_predictions = GOPred()
-    predictions_handle = open(prediction_file, "r")
+    predictions_handle = open(prediction_filepath_str, "r")
+
+    bio_process_predictions_path = Path(
+        f"{results_folder_str}/{team}_{model}_{taxonomy}_BPO.txt"
+    )
+    cellular_component_predictions_path = Path(
+        f"{results_folder_str}/{team}_{model}_{taxonomy}_CCO.txt"
+    )
+    molecular_function_predictions_path = Path(
+        f"{results_folder_str}/{team}_{model}_{taxonomy}_MFO.txt"
+    )
 
     # Before doing the work of splitting the raw predictions into separate files based on ontologies,
     # check to be sure that it hasn't already been done:
-    bio_process_predictions_path = f"{results_folder}/{team}_{model}_{taxonomy}_BPO.txt"
-    cellular_component_predictions_path = f"{results_folder}/{team}_{model}_{taxonomy}_CCO.txt"
-    molecular_function_predictions_path = f"{results_folder}/{team}_{model}_{taxonomy}_MFO.txt"
-
-    bio_process_exists = Path(bio_process_predictions_path).exists()
-    cellular_component_exists = Path(cellular_component_predictions_path).exists()
-    molecular_function_exists = Path(molecular_function_predictions_path).exists()
-
-    if not all((bio_process_exists, cellular_component_exists, molecular_function_exists)):
-
-        split_predictions = all_predictions.split_predictions_by_namespace(obo_path, predictions_handle)
+    # TODO: This might not be valid! A team might not have predictions for all three ontologies, correct?
+    if not all((bio_process_predictions_path.exists(), cellular_component_predictions_path.exists(), molecular_function_predictions_path.exists())):
+        all_predictions = GOPred()
+        split_predictions = all_predictions.split_predictions_by_namespace(obo_filepath_str, predictions_handle)
         # TODO: does it make sense to write these separate ontology files to disk?
-        with open(bio_process_predictions_path, "w") as bio_process_handle:
+        with bio_process_predictions_path.open(mode="w") as bio_process_handle:
             bpo_predictions = split_predictions.get("biological process")
             bio_process_handle.write(
                 "\n".join([str(prediction) for prediction in bpo_predictions])
             )
 
-        with open(cellular_component_predictions_path, "w") as cellular_component_handle:
+        with cellular_component_predictions_path.open(mode="w") as cellular_component_handle:
             cco_predictions = split_predictions.get("cellular component")
             cellular_component_handle.write(
                 "\n".join([str(prediction) for prediction in cco_predictions])
             )
-
-        with open(molecular_function_predictions_path, "w") as molecular_function_handle:
+        with molecular_function_predictions_path.open(mode="w") as molecular_function_handle:
             mfo_predictions = split_predictions.get("molecular function")
             molecular_function_handle.write(
                 "\n".join([str(prediction) for prediction in mfo_predictions])
             )
 
     print()
-    print(" EVALUATING:", color1(prediction_file))
+    print(" EVALUATING:", color1(prediction_filepath_str))
     print("AUTHOR/TEAM:", color1(team))
     print("      MODEL:", color1(model))
     print("   KEYWORDS:", color1(", ".join(keywords)))
     print("    SPECIES:", color1(f"{taxonomy} ({taxonomy_str})"))
 
     # Make some new files to hold the evaluation results:
-    base_results_filename = prediction_file.rstrip(".txt")
-    results_path = f"{results_folder}/{base_results_filename}_results.txt"
-    precision_recall_path = f"{results_folder}/precision_recall/{base_results_filename}_precision_recall.txt"
+    base_results_filename = prediction_filepath_str.rstrip(".txt")
+    results_path_str = f"{results_folder_str}/{base_results_filename}_results.txt"
+    precision_recall_path_str = f"{results_folder_str}/precision_recall/{base_results_filename}_precision_recall.txt"
 
-    with open(results_path, "w") as results_handle, open(precision_recall_path, "w") as precision_recall_handle:
+    with open(results_path_str, "w") as results_handle, open(precision_recall_path_str, "w") as precision_recall_handle:
 
         results_handle.write(f"AUTHOR/TEAM: {team}")
         results_handle.write(f"MODEL: {model}")
@@ -189,12 +194,12 @@ def main():
         indent = " " * 3
 
         for ontology in ("bpo", "cco", "mfo"):
-            ontology_path = f"{results_folder}/{team}_{model}_{taxonomy}_{ontology.upper()}.txt"
+            ontology_path = f"{results_folder_str}/{team}_{model}_{taxonomy}_{ontology.upper()}.txt"
             print(color2("============================================\n"))
             print("ONTOLOGY:", color1(ontology.upper()))
             for benchmark_type in ("type1", "type2"):
 
-                benchmark_type_str = benchmark_type_converter(benchmark_type)
+                benchmark_type_str = convert_benchmark_type(benchmark_type)
 
                 print(f"{indent}BENCHMARK TYPE:", color1(f"{benchmark_type_str} ({benchmark_type})"))
 
@@ -202,21 +207,28 @@ def main():
                     namespace=ontology,
                     species=taxonomy_str,
                     types=benchmark_type,
-                    fullbenchmarkfolder=benchmark_folder,
-                    obopath=obo_path
+                    fullbenchmarkfolder=benchmark_folder_str,
+                    obopath=obo_filepath_str
                 )
                 if benchmark is None:
                     sys.stderr.write("No benchmark is available for the input species and type")
 
-                c = PrecREC(benchmark=benchmark, os_pred_path=ontology_path, obocounts=obo_count_dict[ontology])
+                c = PrecREC(
+                    benchmark=benchmark,
+                    #ontology_specific_prediction_path=ontology_path,
+                    #ontology_term_count=obo_count_dict.get(ontology)
+                    os_pred_path=ontology_path,
+                    obocounts=obo_count_dict[ontology]
+                )
 
-                if not c.exist:
+                if not c.exists:
                     continue
 
                 for mode in ("partial", "full"):
                     print(indent*2, "MODE:", color1(mode))
                     precision, recall, fmax, threshold = c.Fmax_output(mode)
                     coverage = c.coverage()
+
                     print(indent*3, "      FMAX:", color1(fmax))
                     print(indent*3, " THRESHOLD:", color1(threshold))
                     print(indent*3, "  COVERAGE:", color1(coverage))

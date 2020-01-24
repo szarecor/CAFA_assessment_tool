@@ -174,6 +174,10 @@ class benchmark:
         
 
 def read_benchmark(namespace, species, types, fullbenchmarkfolder, obopath):
+
+    #print("READING BENCHMARK")
+    #print(namespace, species, types, fullbenchmarkfolder, obopath)
+
     '''
     Read Benchmark.
     
@@ -235,7 +239,7 @@ def read_benchmark(namespace, species, types, fullbenchmarkfolder, obopath):
     else:
         print('Benchmark set is empty.\n')
         bench=None
-    return(bench, obocountDict)
+    return bench, obocountDict
 
 class result:    
 #WHY DOES THIS EXIST -> THIS IS GOOD ONCE WE ADD OTHER TYPES BUT OVERALL NEEDS REWORK TO APPROACH THIS STYLE
@@ -277,7 +281,7 @@ class PrecREC: #Can we rename to PRRC ? Just a thought
     updated: 12/01/2016
     A class for doing precision recall calculations
     '''
-    def __init__(self, benchmark, os_pred_path,obocounts):
+    def __init__(self, benchmark, os_pred_path, obocounts):
         '''
         Initalize.
         
@@ -288,7 +292,7 @@ class PrecREC: #Can we rename to PRRC ? Just a thought
         '''
         
         #Initialize variables
-        self.exist                            = True
+        self.exists                            = True
         self.ancestors                        = benchmark.ancestors
         self.true_terms                       = benchmark.true_terms
         self.obocount                         = obocounts
@@ -353,10 +357,10 @@ class PrecREC: #Can we rename to PRRC ? Just a thought
                                         self.predicted_bench[protein][ancterm]=self.compare(protein, newtc)
                                         
             if self.count_predictions_in_benchmark==0:
-                self.exist = False
+                self.exists = False
                 print("No protein in this predicted set became a benchmark\n")
         else:
-            self.exist=False
+            self.exists=False
             print('No prediction made in this ontology.\n')
             
             
